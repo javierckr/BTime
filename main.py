@@ -19,49 +19,32 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-def arguments():
-    parser = argparse.ArgumentParser()
-    sp = parser.add_subparsers(dest='opt')
-    for opt in ["reset", "addtoday", "week", "edit", "addfixed", "delevent", "resetall", "wifioff", "wifion", "show", "help"]:
-        sp.add_parser(opt)
-    args = parser.parse_args()
-    FLAG = args.opt
-    if FLAG == 'help':
-        parser.print_help()
-        print()
-        print("     Hola " + os.getenv('USER'))
-        print("   Please, type: `btime <option>´ where <option> can be: ")
-        print('     <empty>    (if its left empty it will show your timetable for today)')
-        print('     reset      (to reset your daily tasks)')
-        print('     addtoday   (to define your daily tasks)')
-        print('     week       (to show your timetable for the entire week)')
-        print('     edit       (to edit any task)')
-        print('     addfixed   (to define your weekly tasks)')
-        print('     delevent   (to delete an event)')
-        print('     resetall   (to delete all your cron tasks)')
-        print('     wifioff    (to disable internet connection)')
-        print('     wifion     (to enable internet connection)')
-        print('     show       (to show BTime message)')
-        print('     help       (to show this message)')
-        print()
-        sys.exit()
-    return FLAG
+class Arguments:
+    # Constructor
+    def __init__(self):
+        self.parser = argparse.ArgumentParser()
+        self.sp = self.parser.add_subparsers(dest='opt')
+        for opt in ["reset", "addtoday", "week", "edit", "addfixed", "delevent", "resetall", "wifioff", "wifion", "show", "help"]:
+            self.sp.add_parser(opt)
+        self.args = self.parser.parse_args().opt
 
-def get_directory():
-    return os.path.dirname(os.path.realpath(__file__))
+class GetThings:
 
-def get_day_of_week():
-    return calendar.day_name[date.today().weekday()]
+    def __init__(self):
+        self.cron = CronTab(user=os.getenv('USER'))
+        self.directory = os.path.dirname(os.path.realpath(__file__))
+        self.day_of_week = calendar.day_name[date.today().weekday()]
 
-def get_cron():
-    return CronTab(user=os.getenv('USER'))
+    @staticmethod
+    def job_title_msg(job):
+        pattern = r'\"(.*)\".*\"(.*)\"'
+        texto = re.search(pattern,job.command)
+        titulo = texto.groups()[0]
+        mensaje = texto.groups()[1]
+        return titulo, mensaje
 
-def get_job_title_msg(job):
-    pattern = r'\"(.*)\".*\"(.*)\"'
-    texto = re.search(pattern,job.command)
-    titulo = texto.groups()[0]
-    mensaje = texto.groups()[1]
-    return titulo, mensaje
+## Constant Vars and objects
+get = GetThings()
 
 def print_horario_hoy(jobs,day_of_week):
     print( bcolors.HEADER+"                           "+day_of_week.upper()+bcolors.ENDC)
@@ -71,7 +54,7 @@ def print_horario_hoy(jobs,day_of_week):
         minuto = str(i.minute)
         if int(hora)<10: hora = str("0"+hora)
         if int(minuto)<10: minuto = str("0"+minuto)
-        titulo, mensaje = get_job_title_msg(i)
+        titulo, mensaje = get.job_title_msg(i)
         if 'today' in str(i.comment):
             print(bcolors.OKGREEN+"     "+hora+":"+minuto+"   "+titulo.upper()+". "+mensaje+bcolors.ENDC)
         else:
@@ -143,11 +126,10 @@ def notification_description(title,msg_text,hour,minute):
     print()
 
 def add_notification(cron,title,msg_text,cmd,day,hour,minute,comment):
-    cron.env['DISPLAY'] = os.getenv('DISPLAY')
+    get.croncron.env['DISPLAY'] = os.getenv('DISPLAY')
     cron.env['XAUTHORITY'] = os.getenv('XAUTHORITY')
-    path = get_directory()
-    notification = str("notify-send -i "+path+"/clock.svg ")
-    beep= str("; play -q "+path+"/swiftly.mp3 -t alsa; ")
+    notification = str("notify-send -i "+get.directory+"/clock.svg ")
+    beep= str("; play -q "+get.directory+"/swiftly.mp3 -t alsa; ")
 
     final_command = str(notification+title+" "+msg_text+beep+cmd)
 
@@ -176,7 +158,7 @@ def add_notification(cron,title,msg_text,cmd,day,hour,minute,comment):
 
 def show_week(cron):
     days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    today = get_day_of_week()
+    today = get.day_of_week
     for i in days:
         print()
         if today == i: show_day(cron,i,one_day=True)
@@ -226,7 +208,7 @@ def show_day(cron, day_of_week, one_day):
     jobs = []
     for job in cron:
         if one_day: 
-            if (job.comment=='today' or job.comment==get_day_of_week()): 
+            if (job.comment=='today' or job.comment==get.day_of_week): 
                 jobs.append(job)
         else:
             if (job.comment==day_of_week):
@@ -242,7 +224,7 @@ def delete_event(cron):
     jobs = []
     jobs_reminders = []
     for job in cron:
-        title, messaje = get_job_title_msg(job)
+        title, messaje = get.job_title_msg(job)
         if ((ans.lower() in str(title.lower())) or (ans in str(messaje.lower()))):
             if (not ('reminder' in str(job.comment))):
                 jobs_titles.append(str("("+str(job.comment)+") "+title+": "+messaje))
@@ -304,85 +286,101 @@ def main():
 
     try:
 
-        FLAG = arguments()
-        cron = get_cron()
+        flag = Arguments()
 
-        if FLAG==None:
-            day_of_week = get_day_of_week()
+        if flag.args==None:
+            day_of_week = get.day_of_week
             print_horario_title()
-            show_day(cron, day_of_week, one_day=True)
-            
+            show_day(get.cron, day_of_week, one_day=True)
 
-        elif FLAG=='addtoday' or FLAG=='addfixed':
-            if FLAG=='addtoday': day_of_week = 'today'
-            else: day_of_week = get_day_of_week()
+        elif flag.args=='addtoday' or flag.args=='addfixed':
+            if flag.args=='addtoday': day_of_week = 'today'
+            else: day_of_week = get.day_of_week
             intro()
             while True:
-                add_new_event(cron,day_of_week)
-        
+                add_new_event(get.cron,day_of_week)
 
-        elif FLAG=='reset':
+        elif flag.args=='reset':
             print()
             ans=input("Please, confirm that you want to delete all non-fixed events: (y/n)")
             if ans!='y': sys.exit()
-            cron.remove_all(comment='today')
-            cron.remove_all(comment='today reminder')
-            cron.write()
+            get.cron.remove_all(comment='today')
+            get.cron.remove_all(comment='today reminder')
+            get.cron.write()
             print()
             print(" . . . Removing events from yesterday")
             print()
 
-        elif FLAG=='week':
-            show_week(cron)
+        elif flag.args=='week':
+            show_week(get.cron)
 
-        elif FLAG=='resetall':
+        elif flag.args=='resetall':
             print()
             print('-------   ¡¡¡ CAUTION !!!   -------')
             print()
             ans=input("Please, confirm that you want to delete ALL cron tasks from your profile: (y/n)")
             if ans!='y': sys.exit()
-            cron.remove_all()
-            cron.write()
+            get.cron.remove_all()
+            get.cron.write()
             print()
             print(" . . . Removing ALL tasks")
             print()
 
-        elif FLAG=='wifioff':
+        elif flag.args=='wifioff':
             os.system("nmcli networking off")
             print_wifioff()
 
-        elif FLAG=='wifion':
+        elif flag.args=='wifion':
             os.system("nmcli networking on")
             print_wifion()
 
-        elif FLAG=='show':
+        elif flag.args=='show':
             print_logo()
             
-        elif FLAG=='delevent':
+        elif flag.args=='delevent':
             print()
             print("   --------- ¡¡¡ CAUTION !!! ---------")
             print("    You are going to delete an event")
             print("   -------------------------------------")
             print()
-            delete_event(cron)
+            delete_event(get.cron)
 
-        elif FLAG=='edit':
+        elif flag.args=='edit':
             while True:
                 print()
                 a = input('    Press l to show week, e to edit, and q to exit: ')
-                if a == 'l': show_week(cron)
+                if a == 'l': show_week(get.cron)
                 elif a == 'q': check_fin(a)
                 elif a == 'e':
                     print()
-                    delete_event(cron)
+                    delete_event(get.cron)
                     msg=" Select if the NEW event should be weekly or for today: "
                     options=["Today", "Weekly"]
                     result = multiple_select(msg, options)
                     print()
                     day_of_week='today'
-                    if result == "Weekly": day_of_week=get_day_of_week()
-                    abotdd_new_event(cron,day_of_week)
-    
+                    if result == "Weekly": day_of_week=get.day_of_week
+                    abotdd_new_event(get.cron,day_of_week)
+        elif flag.args == 'help':
+            print()
+            print("     Hola " + os.getenv('USER'))
+            print("   Please, type: `btime <option>´ where <option> can be: ")
+            print('     <empty>    (if its left empty it will show your timetable for today)')
+            print('     reset      (to reset your daily tasks)')
+            print('     addtoday   (to define your daily tasks)')
+            print('     week       (to show your timetable for the entire week)')
+            print('     edit       (to edit any task)')
+            print('     addfixed   (to define your weekly tasks)')
+            print('     delevent   (to delete an event)')
+            print('     resetall   (to delete all your cron tasks)')
+            print('     wifioff    (to disable internet connection)')
+            print('     wifion     (to enable internet connection)')
+            print('     show       (to show BTime message)')
+            print('     help       (to show this message)')
+            print()
+            sys.exit()
+
+   
     except KeyboardInterrupt:
         error_msg()
 
