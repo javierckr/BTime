@@ -21,28 +21,6 @@ class bcolors:
     UNDERLINE = "\033[4m"
 
 
-class Arguments:
-    # Constructor
-    def __init__(self):
-        self.parser = argparse.ArgumentParser()
-        self.sp = self.parser.add_subparsers(dest="opt")
-        for opt in [
-            "reset",
-            "addtoday",
-            "week",
-            "edit",
-            "addfixed",
-            "delevent",
-            "resetall",
-            "wifioff",
-            "wifion",
-            "show",
-            "help",
-        ]:
-            self.sp.add_parser(opt)
-        self.args = self.parser.parse_args().opt
-
-
 class GetThings:
     def __init__(self):
         self.cron = CronTab(user=os.getenv("USER"))
@@ -58,18 +36,137 @@ class GetThings:
         return titulo, mensaje
 
 
-## Constant Vars and objects
+class Commands:
+    def __init__(self):
+        self.commands = [
+            method for method in dir(self) if method.startswith("__") is False
+        ]
+        self.parser = argparse.ArgumentParser()
+        self.sp = self.parser.add_subparsers(dest="opt")
+        for opt in self.commands:
+            self.sp.add_parser(opt)
+        self.args = self.parser.parse_args().opt
+
+    def __run__(self, command):
+        """Runs the command chosen"""
+        return getattr(self, str(command).lower(), lambda: "Invalid command")()
+
+    ## Methods
+    def help(self):
+        """shows this message"""
+        result = "   Please, type: `btime <option>´ where <option> can be: \n"
+        for command in self.commands:
+            result += (
+                "     {:<20} ".format(command)
+                + str(getattr(self, command).__doc__)
+                + "\n"
+            )
+        return result
+
+    @staticmethod
+    def none():
+        """if its left empty it will show your timetable for today"""
+        return print_horario_title() + show_day(
+            get.cron, get.day_of_week, one_day=True
+        )
+
+    @staticmethod
+    def reset():
+        """resets your daily tasks"""
+        ans = input(
+            "\nPlease, confirm that you want to delete all non-fixed events: (y/n)"
+        )
+        if ans != "y":
+            sys.exit()
+        get.cron.remove_all(comment="today")
+        get.cron.remove_all(comment="today reminder")
+        get.cron.write()
+        return "\n . . . Removing events from yesterday\n"
+
+    @staticmethod
+    def addtoday():
+        """to define your daily tasks"""
+        intro()
+        while True:
+            add_new_event(get.cron, "today")
+        return ""
+
+    @staticmethod
+    def week():
+        """to show your timetable for the entire week"""
+        show_week(get.cron)
+        return ""
+
+    @staticmethod
+    def edit():
+        """to edit any task"""
+        while True:
+            print()
+            a = input("    Press l to show week, e to edit, and q to exit: ")
+            if a == "l":
+                show_week(get.cron)
+            elif a == "q":
+                check_fin(a)
+            elif a == "e":
+                delete_event(get.cron)
+                msg = (
+                    " Select if the NEW event should be weekly or for today: "
+                )
+                options = ["Today", "Weekly"]
+                result = multiple_select(msg, options)
+                day_of_week = "today"
+                if result == "Weekly":
+                    day_of_week = get.day_of_week
+                abotdd_new_event(get.cron, day_of_week)
+        return ""
+
+    @staticmethod
+    def addfixed():
+        """to define your weekly tasks"""
+        intro()
+        while True:
+            add_new_event(get.cron, get.day_of_week)
+
+    @staticmethod
+    def delevent():
+        """to delete an event"""
+        print("Help")
+
+    @staticmethod
+    def resetall():
+        """to delete all your cron tasks"""
+        print("Help")
+
+    @staticmethod
+    def wifion():
+        """to enable wifi"""
+        print("Help")
+
+    @staticmethod
+    def wifioff():
+        """to disable wifi"""
+        print("Help")
+
+    @staticmethod
+    def show():
+        """to show BTime message"""
+        print("Help")
+
+
+## Vars and objects
 get = GetThings()
 
 
 def print_horario_hoy(jobs, day_of_week):
-    print(
+    result = (
         bcolors.HEADER
         + "                           "
         + day_of_week.upper()
         + bcolors.ENDC
+        + "\n"
+        + "    ----------------------------------------------------"
+        + "\n"
     )
-    print("    ----------------------------------------------------")
     for i in jobs:
         hora = str(i.hour)
         minuto = str(i.minute)
@@ -79,7 +176,7 @@ def print_horario_hoy(jobs, day_of_week):
             minuto = str("0" + minuto)
         titulo, mensaje = get.job_title_msg(i)
         if "today" in str(i.comment):
-            print(
+            result += (
                 bcolors.OKGREEN
                 + "     "
                 + hora
@@ -90,9 +187,10 @@ def print_horario_hoy(jobs, day_of_week):
                 + ". "
                 + mensaje
                 + bcolors.ENDC
+                + "\n"
             )
         else:
-            print(
+            result += (
                 bcolors.OKBLUE
                 + "     "
                 + hora
@@ -103,17 +201,20 @@ def print_horario_hoy(jobs, day_of_week):
                 + ". "
                 + mensaje
                 + bcolors.ENDC
+                + "\n"
             )
 
-    print("    ----------------------------------------------------")
-    print()
+    result += "    ----------------------------------------------------\n\n"
+    return result
 
 
 def intro():
-    print("------------------------------------------------------")
-    print(" Hey, ", os.getenv("USER"), ". Let's organize the day! 🕑 ")
-    print("------------------------------------------------------")
-    print()
+    print(
+        "------------------------------------------------------\n" + "Hey, ",
+        os.getenv("USER"),
+        ". Let's organize the day! 🕑 \n"
+        + "------------------------------------------------------\n\n",
+    )
 
 
 def check_fin(char):
@@ -133,7 +234,7 @@ def check_fin(char):
 
 
 def multiple_select(msg, list):
-    print(msg)
+    print("\n" + msg + "\n")
     try:
         d = TerminalMenu(list).show()
         return list[d]
@@ -200,7 +301,7 @@ def notification_description(title, msg_text, hour, minute):
 
 
 def add_notification(cron, title, msg_text, cmd, day, hour, minute, comment):
-    get.croncron.env["DISPLAY"] = os.getenv("DISPLAY")
+    get.cron.env["DISPLAY"] = os.getenv("DISPLAY")
     cron.env["XAUTHORITY"] = os.getenv("XAUTHORITY")
     notification = str("notify-send -i " + get.directory + "/clock.svg ")
     beep = str("; play -q " + get.directory + "/swiftly.mp3 -t alsa; ")
@@ -249,41 +350,37 @@ def show_week(cron):
     for i in days:
         print()
         if today == i:
-            show_day(cron, i, one_day=True)
+            print(show_day(cron, i, one_day=True))
         else:
-            show_day(cron, i, one_day=False)
+            print(show_day(cron, i, one_day=False))
 
 
 def print_horario_title():
-    print(
+    return (
         bcolors.BOLD
         + r"               _   _                      _       "
         + bcolors.ENDC
-    )
-    print(
-        bcolors.BOLD
+        + "\n"
+        + bcolors.BOLD
         + r"              | | | | ___  _ __ __ _ _ __(_) ___  "
         + bcolors.ENDC
-    )
-    print(
-        bcolors.BOLD
+        + "\n"
+        + bcolors.BOLD
         + r"              | |_| |/ _ \| '__/ _` | '__| |/ _ \ "
         + bcolors.ENDC
-    )
-    print(
-        bcolors.BOLD
+        + "\n"
+        + bcolors.BOLD
         + r"              |  _  | (_) | | | (_| | |  | | (_) |"
         + bcolors.ENDC
-    )
-    print(
-        bcolors.BOLD
+        + "\n"
+        + bcolors.BOLD
         + r"              |_| |_|\___/|_|  \__,_|_|  |_|\___/ "
         + bcolors.ENDC
-    )
-    print(
-        bcolors.BOLD
+        + "\n"
+        + bcolors.BOLD
         + r"                                                  "
         + bcolors.ENDC
+        + "\n"
     )
 
 
@@ -389,7 +486,7 @@ def show_day(cron, day_of_week, one_day):
             if job.comment == day_of_week:
                 jobs.append(job)
     jobs.sort(key=lambda x: (int(str(x.hour)), int(str(x.minute))))
-    print_horario_hoy(jobs, day_of_week)
+    return print_horario_hoy(jobs, day_of_week)
 
 
 def delete_event(cron):
@@ -569,116 +666,42 @@ def main():
 
     try:
 
-        flag = Arguments()
+        command = Commands()
+        print(command.__run__(command.args))
 
-        if flag.args == None:
-            day_of_week = get.day_of_week
-            print_horario_title()
-            show_day(get.cron, day_of_week, one_day=True)
-
-        elif flag.args == "addtoday" or flag.args == "addfixed":
-            if flag.args == "addtoday":
-                day_of_week = "today"
-            else:
-                day_of_week = get.day_of_week
-            intro()
-            while True:
-                add_new_event(get.cron, day_of_week)
-
-        elif flag.args == "reset":
-            print()
-            ans = input(
-                "Please, confirm that you want to delete all non-fixed events: (y/n)"
-            )
-            if ans != "y":
-                sys.exit()
-            get.cron.remove_all(comment="today")
-            get.cron.remove_all(comment="today reminder")
-            get.cron.write()
-            print()
-            print(" . . . Removing events from yesterday")
-            print()
-
-        elif flag.args == "week":
-            show_week(get.cron)
-
-        elif flag.args == "resetall":
-            print()
-            print("-------   ¡¡¡ CAUTION !!!   -------")
-            print()
-            ans = input(
-                "Please, confirm that you want to delete ALL cron tasks from your profile: (y/n)"
-            )
-            if ans != "y":
-                sys.exit()
-            get.cron.remove_all()
-            get.cron.write()
-            print()
-            print(" . . . Removing ALL tasks")
-            print()
-
-        elif flag.args == "wifioff":
-            os.system("nmcli networking off")
-            print_wifioff()
-
-        elif flag.args == "wifion":
-            os.system("nmcli networking on")
-            print_wifion()
-
-        elif flag.args == "show":
-            print_logo()
-
-        elif flag.args == "delevent":
-            print()
-            print("   --------- ¡¡¡ CAUTION !!! ---------")
-            print("    You are going to delete an event")
-            print("   -------------------------------------")
-            print()
-            delete_event(get.cron)
-
-        elif flag.args == "edit":
-            while True:
-                print()
-                a = input(
-                    "    Press l to show week, e to edit, and q to exit: "
-                )
-                if a == "l":
-                    show_week(get.cron)
-                elif a == "q":
-                    check_fin(a)
-                elif a == "e":
-                    print()
-                    delete_event(get.cron)
-                    msg = " Select if the NEW event should be weekly or for today: "
-                    options = ["Today", "Weekly"]
-                    result = multiple_select(msg, options)
-                    print()
-                    day_of_week = "today"
-                    if result == "Weekly":
-                        day_of_week = get.day_of_week
-                    abotdd_new_event(get.cron, day_of_week)
-        elif flag.args == "help":
-            print()
-            print("     Hola " + os.getenv("USER"))
-            print("   Please, type: `btime <option>´ where <option> can be: ")
-            print(
-                "     <empty>    (if its left empty it will show your timetable for today)"
-            )
-            print("     reset      (to reset your daily tasks)")
-            print("     addtoday   (to define your daily tasks)")
-            print(
-                "     week       (to show your timetable for the entire week)"
-            )
-            print("     edit       (to edit any task)")
-            print("     addfixed   (to define your weekly tasks)")
-            print("     delevent   (to delete an event)")
-            print("     resetall   (to delete all your cron tasks)")
-            print("     wifioff    (to disable internet connection)")
-            print("     wifion     (to enable internet connection)")
-            print("     show       (to show BTime message)")
-            print("     help       (to show this message)")
-            print()
-            sys.exit()
+#        if flag == "resetall":
+#            print()
+#            print("-------   ¡¡¡ CAUTION !!!   -------")
+#            print()
+#            ans = input(
+#                "Please, confirm that you want to delete ALL cron tasks from your profile: (y/n)"
+#            )
+#            if ans != "y":
+#                sys.exit()
+#            get.cron.remove_all()
+#            get.cron.write()
+#            print()
+#            print(" . . . Removing ALL tasks")
+#            print()
+#
+#        elif flag == "wifioff":
+#            os.system("nmcli networking off")
+#            print_wifioff()
+#
+#        elif flag == "wifion":
+#            os.system("nmcli networking on")
+#            print_wifion()
+#
+#        elif flag == "show":
+#            print_logo()
+#
+#        elif flag == "delevent":
+#            print()
+#            print("   --------- ¡¡¡ CAUTION !!! ---------")
+#            print("    You are going to delete an event")
+#            print("   -------------------------------------")
+#            print()
+#            delete_event(get.cron)
 
     except KeyboardInterrupt:
         error_msg()
